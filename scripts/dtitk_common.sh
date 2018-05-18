@@ -98,7 +98,7 @@ fi
 #
 #  customized qsub
 #
-dtitk_qsub="qsub ${DTITK_QSUB_QUEUE}"
+dtitk_qsub="condor_qsub ${DTITK_QSUB_QUEUE}"
 
 ## the multi-iteration starting levels for deformable registration
 ## the first element is just buffer, not used!
