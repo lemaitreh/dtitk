@@ -50,38 +50,55 @@ subjects=$2
 mask=$3
 no_of_iter=$4
 ftol=$5
-
 jid=ddr_"$$"
+completed=0
 
-for subj in `cat ${subjects}`
+while [ "$completed" -eq 0 ]
 do
-	echo $subj
-	pref=`getTVPrefix $subj`
-	wdir=`pwd`
+	for subj in `cat ${subjects}`
+	do
+		echo $subj
+		pref=`getTVPrefix $subj`
+        	wdir=`pwd`
+		if [ "${DTITK_USE_QSUB}" -eq 1 ]
+		then
+			jname=${jid}_${subj}
+			jname=`echo $jname | sed -e 's/\//_/g'`
+			echo > ${pref}.submit
+			echo "universe = vanilla" >> ${pref}.submit
+			echo "initialdir = ${wdir}">> ${pref}.submit
+			echo "getenv = True" >> ${pref}.submit
+			echo "executable = ${DTITK_ROOT}/scripts/dti_diffeomorphic_reg" >> ${pref}.submit
+			echo "arguments = ${template} ${subj} ${mask} 1 ${no_of_iter} ${ftol}" >> ${pref}.submit
+			echo "output = ${pref}.out" >> ${pref}.submit
+ 			echo "error = ${pref}.err" >> ${pref}.submit
+			echo "log = ${pref}.log" >> ${pref}.submit
+			echo "queue" >> ${pref}.submit
+			condor_submit ${pref}.submit
+		else
+			cmd="${DTITK_ROOT}/scripts/dti_diffeomorphic_reg"
+			${cmd} ${template} ${subj} ${mask} 1 ${no_of_iter} ${ftol}
+			completed=1
+		fi
+	done
+
 	if [ "${DTITK_USE_QSUB}" -eq 1 ]
 	then
-		jname=${jid}_${subj}
-		jname=`echo $jname | sed -e 's/\//_/g'`
-		echo > ${pref}.submit
-                echo "universe = vanilla" >> ${pref}.submit
-                echo "initialdir = ${wdir}" >> ${pref}.submit
-                echo "getenv = True" >> ${pref}.submit
-                echo "executable = ${DTITK_ROOT}/scripts/dti_diffeomorphic_reg$
-                echo "arguments = ${template} ${subj} ${mask} 1 ${no_of_iter} $
-                echo "output = ${pref}.out" >> ${pref}.submit
-                echo "error = ${pref}.err" >> ${pref}.submit
-                echo "log = ${pref}.log" >> ${pref}.submit
-                echo "queue" >> ${pref}.submit
-                condor_submit ${pref}.submit
-	else
-		cmd="${DTITK_ROOT}/scripts/dti_diffeomorphic_reg"
-		${cmd} ${template} ${subj} ${mask} 1 ${no_of_iter} ${ftol}
+		condor_wait ${pref}.log
+		ls *dtitk_aff.nii.gz > subj_aff_diffeo_todo.txt 
+		subjectstodo=`cat subj_aff_diffeo_todo.txt | wc -l`
+		ls *dtitk_aff_diffeo.df.nii.gz > subj_aff_diffeo_done.txt 
+		subjectsdone=`cat subj_aff_diffeo_done.txt | wc -l`
+		if [ "$subjectstodo" -eq "$subjectsdone" ]
+		then 
+			completed=1
+			echo "done"
+		else
+			grep -Fxv -f subj_aff_diffeo_done.txt diffeo.txt > subj_aff_diffeo_notdone.txt
+			toredo=`cat subj_aff_diffeo_notdone.txt | wc -l`
+			echo "$toredo subjects to redo on the grid"
+			cat subj_aff_diffeo_notdone.txt | rev | cut -d "_" -f4- | rev | awk '{print $1"_dtitk_aff.nii.gz"}' > subj_aff_todo.txt
+			subjects="subj_aff_todo.txt"
+		fi
 	fi
 done
-
-if [ "${DTITK_USE_QSUB}" -eq 1 ]
-then
-	condor_wait ${pref}.log
-	echo "done"
-fi
-
