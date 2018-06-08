@@ -1,0 +1,106 @@
+#!/bin/bash
+#============================================================================
+#
+#  Program:     DTI ToolKit (DTI-TK)
+#  Module:      $RCSfile: dti_warp_to_template_group,v $
+#  Language:    bash
+#  Date:        $Date: 2011/12/21 20:39:22 $
+#  Version:     $Revision: 1.1.1.1 $
+#
+#  Copyright (c) Gary Hui Zhang (garyhuizhang@gmail.com).
+#  All rights reserverd.
+#
+#  DTI-TK is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  DTI-TK is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with DTI-TK.  If not, see <http://www.gnu.org/licenses/>.
+#============================================================================
+
+#
+# Mapping a set of DTI volumes from their individualsubject space
+# to the template space
+#
+
+# check DTITK_ROOT variable
+if [ -z "${DTITK_ROOT}" ]
+then
+	echo "Environment variable DTITK_ROOT is not defined"
+	exit 1
+fi
+
+# source dtitk_common.sh
+. ${DTITK_ROOT}/scripts/dtitk_common.sh
+
+if [ $# -lt 5 ]
+then
+	echo "Mapping a set of DTI volumes from their individual subject spaces to the template space"
+	echo "Usage: `basename $0` subject_list_file target_volume xv yv zv"
+	exit 1
+fi
+
+subjects=$1
+target=$2
+xv=$3
+yv=$4
+zv=$5
+jid=drr_"$$"
+completed=0
+while [ "$completed" -eq 0 ]
+do
+	for subj in `cat ${subjects}`
+	do
+		echo $subj
+		pref=`getTVPrefix $subj`
+		wdir=`pwd`
+		if [ "${DTITK_USE_QSUB}" -eq 1 ]
+		then
+			jname=${jid}_${subj}
+			jname=`echo $jname | sed -e 's/\//_/g'`
+			echo > ${pref}.submit
+                        echo "universe = vanilla" >> ${pref}.submit
+                        echo "initialdir = ${wdir}">> ${pref}.submit
+                        echo "getenv = True" >> ${pref}.submit
+                        echo "executable = ${DTITK_ROOT}/scripts/dti_warp_to_template" >> ${pref}.submit
+                        echo "arguments =  ${subj} ${target} ${xv} ${yv} ${zv}" >> ${pref}.submit
+                        echo "output = ${pref}.out" >> ${pref}.submit
+                        echo "error = ${pref}.err" >> ${pref}.submit
+                        echo "log = ${pref}.log" >> ${pref}.submit
+                        echo "queue" >> ${pref}.submit
+                        condor_submit ${pref}.submit
+		else
+			cmd="${DTITK_ROOT}/scripts/dti_warp_to_template"
+			${cmd} ${subj} ${target} ${xv} ${yv} ${zv}
+			completed=1
+		fi
+	done
+
+	if [ "${DTITK_USE_QSUB}" -eq 1 ]
+	then
+		condor_wait ${pref}.log	
+		ls *dtitk.nii.gz | cut -d "." -f1 > subj_diffeo_todo.txt 
+                subjectstodo=`cat subj_diffeo_todo.txt | wc -l`
+                ls *dtitk_diffeo.nii.gz | rev | cut -d "_" -f2- | rev > subj_diffeo_done.txt 
+                subjectsdone=`cat subj_diffeo_done.txt | wc -l`
+                if [ "$subjectstodo" -eq "$subjectsdone" ]
+                then 
+                        completed=1
+                        echo "done"
+                else
+                        grep -Fxv -f subj_diffeo_done.txt subj_diffeo_todo.txt > subj_diffeo_notdone.txt
+                        toredo=`cat subj_diffeo_notdone.txt | wc -l`
+                        echo "$toredo subjects to redo on the grid"
+			cat subj_diffeo_notdone.txt | awk '{print $1".nii.gz"}' > subj_todo.txt
+                        subjects="subj_todo.txt"
+                fi
+	fi
+done
+echo "done"
+
