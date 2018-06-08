@@ -57,20 +57,31 @@ for subj in `cat ${subjects}`
 do
 	echo $subj
 	pref=`getTVPrefix $subj`
+	wdir=`pwd`
 	if [ "${DTITK_USE_QSUB}" -eq 1 ]
 	then
 		jname=${jid}_${subj}
 		jname=`echo $jname | sed -e 's/\//_/g'`
-		cmd="${dtitk_qsub} -cwd -o ${pref}.log -e ${pref}.err -b y -N ${jname} ${DTITK_ROOT}/scripts/dti_diffeomorphic_reg"
+		echo > ${pref}.submit
+                echo "universe = vanilla" >> ${pref}.submit
+                echo "initialdir = ${wdir}" >> ${pref}.submit
+                echo "getenv = True" >> ${pref}.submit
+                echo "executable = ${DTITK_ROOT}/scripts/dti_diffeomorphic_reg$
+                echo "arguments = ${template} ${subj} ${mask} 1 ${no_of_iter} $
+                echo "output = ${pref}.out" >> ${pref}.submit
+                echo "error = ${pref}.err" >> ${pref}.submit
+                echo "log = ${pref}.log" >> ${pref}.submit
+                echo "queue" >> ${pref}.submit
+                condor_submit ${pref}.submit
 	else
 		cmd="${DTITK_ROOT}/scripts/dti_diffeomorphic_reg"
+		${cmd} ${template} ${subj} ${mask} 1 ${no_of_iter} ${ftol}
 	fi
-	${cmd} ${template} ${subj} ${mask} 1 ${no_of_iter} ${ftol}
 done
 
 if [ "${DTITK_USE_QSUB}" -eq 1 ]
 then
-	${dtitk_qsub} -sync y -hold_jid ${jid}_* -o /dev/null -e /dev/null -b y echo "done" > /dev/null
+	condor_wait ${pref}.log
 	echo "done"
 fi
 
